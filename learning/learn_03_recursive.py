@@ -4,8 +4,11 @@ Phase 3: The real power - recursive sub-LM calls.
 RLM can break down problems and call the LLM multiple times during execution.
 This is where "Recursive Language Models" really shines!
 """
+
 import os
+
 from dotenv import load_dotenv
+
 from rlm import RLM
 from rlm.logger import RLMLogger
 
@@ -58,10 +61,7 @@ print("  4. Returns the final analysis")
 print("\nThis is RECURSIVE reasoning!")
 print("=" * 70 + "\n")
 
-result = rlm.completion(
-    prompt=context,
-    root_prompt=question
-)
+result = rlm.completion(prompt=context, root_prompt=question)
 
 print("\n" + "=" * 70)
 print("FINAL ANSWER:")
@@ -70,4 +70,3 @@ print(f"\nTime taken: {result.execution_time:.2f}s")
 print(f"Token usage: {result.usage_summary.to_dict()}")
 print(f"\nLog saved to: {logger.log_dir}")
 print("=" * 70)
-

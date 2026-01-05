@@ -3,10 +3,13 @@ Phase 4: Side-by-side comparison - RLM vs Regular LLM.
 
 See the difference in accuracy and capability!
 """
+
 import os
-from dotenv import load_dotenv
-from rlm import RLM
+
 import openai
+from dotenv import load_dotenv
+
+from rlm import RLM
 
 load_dotenv()
 
@@ -79,4 +82,3 @@ print("  - Executes it for exact results")
 print("  - Can verify and iterate")
 print("\nFinal RLM Answer:", result.response)
 print("=" * 70)
-

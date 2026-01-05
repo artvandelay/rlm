@@ -75,10 +75,10 @@ In the next step, we can return FINAL_VAR(final_answer).
 IMPORTANT: When you are done with the iterative process, you MUST provide a final answer. You have two options:
 
 1. **Direct Answer:** Write FINAL(your answer here) in plain text (NOT in code)
-   Example: FINAL(yes)
-   Example: FINAL(The capital is Paris)
-   
-2. **Variable Answer:** Write FINAL_VAR(variable_name) to return a variable from REPL
+    Example: FINAL(yes)
+    Example: FINAL(The capital is Paris)
+
+    2. **Variable Answer:** Write FINAL_VAR(variable_name) to return a variable from REPL
    Example: After creating `result = "yes"` in REPL, write: FINAL_VAR(result)
 
 CRITICAL FORMAT RULES:

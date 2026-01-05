@@ -4,8 +4,11 @@ Phase 5: Generate a complex trajectory for visualization.
 This creates a rich log file that you can explore in the visualizer
 to really understand what's happening under the hood.
 """
+
 import os
+
 from dotenv import load_dotenv
+
 from rlm import RLM
 from rlm.logger import RLMLogger
 
@@ -57,10 +60,7 @@ print("\nRunning complex analysis task...")
 print("This will create a detailed trajectory with multiple iterations.")
 print("\n" + "=" * 70 + "\n")
 
-result = rlm.completion(
-    prompt=context_data,
-    root_prompt=task
-)
+result = rlm.completion(prompt=context_data, root_prompt=task)
 
 print("\n" + "=" * 70)
 print("TASK COMPLETE!")
@@ -68,7 +68,7 @@ print("=" * 70)
 print("\nFinal Report:")
 print(result.response)
 print(f"\nExecution time: {result.execution_time:.2f}s")
-print(f"Iterations: Check the verbose output above")
+print("Iterations: Check the verbose output above")
 print(f"\n📊 Log file saved to: {logger.log_dir}")
 print("\n" + "=" * 70)
 print("NEXT STEP: Visualize this trajectory!")
@@ -86,4 +86,3 @@ print("  - Outputs and errors")
 print("  - Token usage over time")
 print("  - The full reasoning chain")
 print("=" * 70)
-

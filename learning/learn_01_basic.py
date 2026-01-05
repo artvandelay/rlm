@@ -4,8 +4,11 @@ Phase 1: See RLM in action with a simple task that benefits from code execution.
 This shows the core difference: RLM can write and execute code to solve problems,
 rather than just generating text.
 """
+
 import os
+
 from dotenv import load_dotenv
+
 from rlm import RLM
 
 load_dotenv()
@@ -45,4 +48,3 @@ print("\n" + "=" * 70)
 print("FINAL ANSWER:", result.response)
 print(f"Time taken: {result.execution_time:.2f}s")
 print("=" * 70)
-

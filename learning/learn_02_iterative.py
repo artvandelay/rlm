@@ -4,8 +4,11 @@ Phase 2: Understand iterative reasoning.
 RLM can examine data, make decisions, and iterate - not just one-shot generation.
 This is where it gets interesting!
 """
+
 import os
+
 from dotenv import load_dotenv
+
 from rlm import RLM
 from rlm.logger import RLMLogger
 
@@ -54,14 +57,10 @@ print("  3. Compares growth rates")
 print("  4. Iterates through the analysis")
 print("=" * 70 + "\n")
 
-result = rlm.completion(
-    prompt=context,
-    root_prompt=question
-)
+result = rlm.completion(prompt=context, root_prompt=question)
 
 print("\n" + "=" * 70)
 print("FINAL ANSWER:", result.response)
 print(f"Time taken: {result.execution_time:.2f}s")
 print(f"Log saved to: {logger.log_dir}")
 print("=" * 70)
-

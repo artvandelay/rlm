@@ -1,7 +1,15 @@
 import argparse
 import json
 import os
+import sys
 from datetime import datetime
+
+# Add benchmarks directory to path for imports
+_benchmarks_dir = os.path.dirname(os.path.abspath(__file__))
+if _benchmarks_dir not in sys.path:
+    sys.path.insert(0, _benchmarks_dir)
+
+from pricing import calculate_cost  # noqa: E402
 
 
 def load_results(filepath: str) -> list[dict]:
@@ -23,6 +31,26 @@ def extract_run_id(filepath: str) -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def get_model_cost(model_result: dict) -> float:
+    """Calculate cost for a single model result."""
+    model_id = model_result.get("model", "")
+    usage = model_result.get("usage", {})
+
+    # Extract token counts from usage
+    total_input = 0
+    total_output = 0
+
+    if usage and "model_usage_summaries" in usage:
+        for model_usage in usage["model_usage_summaries"].values():
+            total_input += model_usage.get("total_input_tokens", 0)
+            total_output += model_usage.get("total_output_tokens", 0)
+
+    if total_input == 0 and total_output == 0:
+        return 0.0
+
+    return calculate_cost(total_input, total_output, model_id)
+
+
 def generate_markdown_report(results: list[dict], run_id: str, output_dir: str):
     """Generate comprehensive markdown report."""
 
@@ -37,6 +65,7 @@ def generate_markdown_report(results: list[dict], run_id: str, output_dir: str):
         avg_f1 = sum(r["models"][model_name]["f1"] for r in results) / total
         avg_time = sum(r["models"][model_name]["time"] for r in results) / total
         avg_calls = sum(r["models"][model_name]["llm_calls"] for r in results) / total
+        avg_cost = sum(get_model_cost(r["models"][model_name]) for r in results) / total
 
         metrics[model_name] = {
             "em": em_count,
@@ -44,6 +73,7 @@ def generate_markdown_report(results: list[dict], run_id: str, output_dir: str):
             "avg_f1": avg_f1,
             "avg_time": avg_time,
             "avg_calls": avg_calls,
+            "avg_cost": avg_cost,
         }
 
     # Generate markdown
@@ -57,13 +87,14 @@ def generate_markdown_report(results: list[dict], run_id: str, output_dir: str):
 
         # Overall Results Table
         f.write("## Overall Results\n\n")
-        f.write("| Model | EM | EM % | Avg F1 | Avg Time (s) | Avg LLM Calls |\n")
-        f.write("|-------|----|----|--------|--------------|---------------|\n")
+        f.write("| Model | EM | EM % | Avg F1 | Avg Time (s) | Avg LLM Calls | Avg Cost (¢) |\n")
+        f.write("|-------|----|----|--------|--------------|---------------|-------------|\n")
 
         for model_name in model_names:
             m = metrics[model_name]
+            cost_cents = m["avg_cost"] * 100
             f.write(
-                f"| {model_name} | {m['em']}/{total} | {m['em_pct']:.1f}% | {m['avg_f1']:.3f} | {m['avg_time']:.2f} | {m['avg_calls']:.1f} |\n"
+                f"| {model_name} | {m['em']}/{total} | {m['em_pct']:.1f}% | {m['avg_f1']:.3f} | {m['avg_time']:.2f} | {m['avg_calls']:.1f} | {cost_cents:.2f}¢ |\n"
             )
 
         f.write("\n---\n\n")
@@ -118,14 +149,16 @@ def generate_markdown_report(results: list[dict], run_id: str, output_dir: str):
             f.write(f"**Question:** {r['question']}\n\n")
             f.write(f"**Gold Answer:** `{r['gold_answer']}`\n\n")
 
-            f.write("| Model | Answer | F1 | EM | Time | Calls |\n")
-            f.write("|-------|--------|----|----|------|-------|\n")
+            f.write("| Model | Answer | F1 | EM | Time | Calls | Cost (¢) |\n")
+            f.write("|-------|--------|----|----|------|-------|----------|\n")
 
             for model_name in model_names:
                 m = r["models"][model_name]
                 answer_preview = m["answer"][:80] + "..." if len(m["answer"]) > 80 else m["answer"]
+                cost = get_model_cost(m)
+                cost_cents = cost * 100
                 f.write(
-                    f"| {model_name} | {answer_preview} | {m['f1']:.2f} | {'✓' if m['em'] else '✗'} | {m['time']:.1f}s | {m['llm_calls']} |\n"
+                    f"| {model_name} | {answer_preview} | {m['f1']:.2f} | {'✓' if m['em'] else '✗'} | {m['time']:.1f}s | {m['llm_calls']} | {cost_cents:.2f}¢ |\n"
                 )
 
             # Highlight winner
@@ -141,23 +174,27 @@ def print_console_summary(results: list[dict]):
     model_names = list(results[0]["models"].keys())
     total = len(results)
 
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 90)
     print(f"BENCHMARK RESULTS (n={total})")
-    print("=" * 80)
-    print(f"{'Model':<30} | {'EM':<10} | {'Avg F1':<8} | {'Avg Time':<10} | {'Avg Calls':<10}")
-    print("-" * 80)
+    print("=" * 90)
+    print(
+        f"{'Model':<30} | {'EM':<10} | {'Avg F1':<8} | {'Avg Time':<10} | {'Avg Calls':<10} | {'Avg Cost':<12}"
+    )
+    print("-" * 90)
 
     for model_name in model_names:
         em_count = sum(1 for r in results if r["models"][model_name]["em"])
         avg_f1 = sum(r["models"][model_name]["f1"] for r in results) / total
         avg_time = sum(r["models"][model_name]["time"] for r in results) / total
         avg_calls = sum(r["models"][model_name]["llm_calls"] for r in results) / total
+        avg_cost = sum(get_model_cost(r["models"][model_name]) for r in results) / total
+        avg_cost_cents = avg_cost * 100
 
         print(
-            f"{model_name:<30} | {em_count}/{total} ({em_count / total:.0%}){'':<2} | {avg_f1:.3f}    | {avg_time:.2f}s      | {avg_calls:.1f}"
+            f"{model_name:<30} | {em_count}/{total} ({em_count / total:.0%}){'':<2} | {avg_f1:.3f}    | {avg_time:.2f}s      | {avg_calls:.1f}      | {avg_cost_cents:.2f}¢"
         )
 
-    print("=" * 80)
+    print("=" * 90)
 
 
 def main():
