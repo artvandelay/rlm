@@ -217,7 +217,7 @@ class QueryMetadata:
         if isinstance(prompt, str):
             self.context_lengths = [len(prompt)]
             self.context_type = "str"
-        elif isinstance(prompt, dict[Any, str]):
+        elif isinstance(prompt, dict):
             self.context_lengths = [len(chunk) for chunk in prompt.values()]
             self.context_type = "dict"
         elif isinstance(prompt, list):

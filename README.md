@@ -58,6 +58,8 @@ To run a quick test, the following will run an RLM query with the OpenAI client 
 uv run examples/quickstart.py
 ```
 
+For a comprehensive learning path, see the `learning/` directory with 5 progressive tutorials.
+
 The default RLM client uses a REPL environment that runs on the host process through Python `exec` calls. It uses the same virtual environment as the host process (i.e. it will have access to the same dependencies), but with some limitations in its available global modules. As an example, we can call RLM completions using GPT-5-nano:
 ```python
 from rlm import RLM
@@ -130,6 +132,25 @@ If you use this code or repository in your research, please cite:
       url={https://arxiv.org/abs/2512.24601}, 
 }
 ```
+
+## Benchmarking RLMs vs Regular LLMs
+
+We provide a comprehensive benchmarking suite to compare RLMs against standard LLM inference on multi-hop reasoning tasks. **Key finding:** Smaller models with RLM can outperform larger models without RLM.
+
+### Quick Benchmark
+```bash
+# Compare GPT-4o vs GPT-4o-mini (RLM) on 5 examples
+python run_benchmark_quick.py
+
+# View results with detailed report generation
+python benchmarks/viewer.py --file benchmarks/results/hotpot_qa_results_*.jsonl
+```
+
+**Example Results** (5 HotpotQA examples):
+- **GPT-4o (Regular)**: F1 = 0.178, 1 call per query
+- **GPT-4o-mini (RLM)**: F1 = 0.586 (3.3x better), ~5 calls per query
+
+See [`benchmarks/README.md`](benchmarks/README.md) for full details on configuration, datasets, and interpretation.
 
 ## Optional Debugging: Visualizing RLM Trajectories
 We additionally provide a simple visualizer tool to examine and view the code, sub-LM, and root-LM calls of an RLM trajectory. To save log files (`.jsonl`) on every completion call that can be viewed in the visualizer, initialize the `RLMLogger` object and pass it into the `RLM` on initialization:

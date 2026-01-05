@@ -72,9 +72,32 @@ final_answer = llm_query(f"Based on these summaries, answer the original query: 
 ```
 In the next step, we can return FINAL_VAR(final_answer).
 
-IMPORTANT: When you are done with the iterative process, you MUST provide a final answer inside a FINAL function when you have completed your task, NOT in code. Do not use these tags unless you have completed your task. You have two options:
-1. Use FINAL(your final answer here) to provide the answer directly
-2. Use FINAL_VAR(variable_name) to return a variable you have created in the REPL environment as your final output
+IMPORTANT: When you are done with the iterative process, you MUST provide a final answer. You have two options:
+
+1. **Direct Answer:** Write FINAL(your answer here) in plain text (NOT in code)
+   Example: FINAL(yes)
+   Example: FINAL(The capital is Paris)
+   
+2. **Variable Answer:** Write FINAL_VAR(variable_name) to return a variable from REPL
+   Example: After creating `result = "yes"` in REPL, write: FINAL_VAR(result)
+
+CRITICAL FORMAT RULES:
+- Write FINAL(...) or FINAL_VAR(...) as PLAIN TEXT, not inside ```repl``` code blocks
+- Do NOT return tuples like ('FINAL', 'answer') - just write FINAL(answer)
+- Do NOT return code representations - write the actual answer
+- Your final answer should be CONCISE and directly answer the question
+- For yes/no questions, just answer "yes" or "no"
+- For factual questions, provide the specific fact requested, not a full sentence
+
+BAD Examples (DO NOT DO THIS):
+- ('FINAL', 'yes')  ❌
+- FINAL_VAR('result')  ❌ (has quotes around variable name)
+- ```repl\nFINAL(answer)\n```  ❌ (in code block)
+
+GOOD Examples:
+- FINAL(yes)  ✓
+- FINAL(Paris)  ✓
+- FINAL_VAR(result)  ✓ (no quotes around variable name)
 
 Think step by step carefully, plan, and execute this plan immediately in your response -- do not just say "I will do this" or "I will do that". Output to the REPL environment and recursive LLMs as much as possible. Remember to explicitly answer the original query in your final answer.
 """
