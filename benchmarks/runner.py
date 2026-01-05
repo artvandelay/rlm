@@ -1,7 +1,7 @@
-import asyncio
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any
 
@@ -74,20 +74,16 @@ class BenchmarkRunner:
             else:
                 print(f"Unknown task: {name}")
 
-    async def run_model_async(
+    def run_model(
         self, client, model_config: ModelConfig, question: str, context: str
     ) -> dict[str, Any]:
-        """Run a single model (RLM or regular) on a question asynchronously."""
+        """Run a single model (RLM or regular) on a question."""
         start_time = time.time()
 
         try:
             if model_config.use_rlm:
                 # RLM: context as prompt, question as root_prompt
-                # Run in thread pool since RLM doesn't have native async
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None, lambda: client.completion(prompt=context, root_prompt=question)
-                )
+                result = client.completion(prompt=context, root_prompt=question)
                 duration = time.time() - start_time
 
                 # Extract LLM call count from usage summary
@@ -108,15 +104,10 @@ class BenchmarkRunner:
                 # Regular LLM: standard prompt
                 full_prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer the question based on the context. Be concise."
 
-                # Run in thread pool
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: client.chat.completions.create(
-                        model=model_config.model_id,
-                        messages=[{"role": "user", "content": full_prompt}],
-                        temperature=0.0,
-                    ),
+                response = client.chat.completions.create(
+                    model=model_config.model_id,
+                    messages=[{"role": "user", "content": full_prompt}],
+                    temperature=0.0,
                 )
                 duration = time.time() - start_time
 
@@ -128,12 +119,6 @@ class BenchmarkRunner:
                 }
         except Exception as e:
             return {"answer": f"Error: {e}", "time": 0, "error": str(e), "llm_calls": 0}
-
-    def run_model(
-        self, client, model_config: ModelConfig, question: str, context: str
-    ) -> dict[str, Any]:
-        """Synchronous wrapper for run_model_async."""
-        return asyncio.run(self.run_model_async(client, model_config, question, context))
 
     def run(self):
         os.makedirs(self.config.output_dir, exist_ok=True)
@@ -147,9 +132,42 @@ class BenchmarkRunner:
         for task in self.tasks:
             print(f"\nRunning Task: {task.dataset_name}")
             examples = task.get_examples()
-            results = []
 
-            for example in tqdm(examples, desc=f"{task.dataset_name}"):
+            # Parallelize ALL tasks: examples × models
+            num_workers = len(self.config.models) * min(
+                len(examples), 10
+            )  # Cap at reasonable limit
+            print(
+                f"Running {len(examples)} examples × {len(self.config.models)} models = {len(examples) * len(self.config.models)} tasks in parallel..."
+            )
+
+            # Submit all tasks at once
+            all_results = {}  # (example_id, model_name) -> result
+            with ThreadPoolExecutor(max_workers=num_workers) as executor:
+                future_to_key = {}
+                for example in examples:
+                    for model_config in self.config.models:
+                        future = executor.submit(
+                            self.run_model,
+                            clients[model_config.name],
+                            model_config,
+                            example.question,
+                            example.context,
+                        )
+                        future_to_key[future] = (example.id, model_config.name)
+
+                # Collect results with progress bar
+                for future in tqdm(
+                    as_completed(future_to_key),
+                    total=len(future_to_key),
+                    desc=f"{task.dataset_name}",
+                ):
+                    key = future_to_key[future]
+                    all_results[key] = future.result()
+
+            # Assemble results by example
+            results = []
+            for example in examples:
                 result_entry = {
                     "id": example.id,
                     "question": example.question,
@@ -157,29 +175,8 @@ class BenchmarkRunner:
                     "models": {},
                 }
 
-                # Run all models in parallel for this example
-                async def run_all_models(ex):
-                    tasks = []
-                    for model_config in self.config.models:
-                        client = clients[model_config.name]
-                        task_coro = self.run_model_async(
-                            client, model_config, ex.question, ex.context
-                        )
-                        tasks.append((model_config.name, task_coro))
-
-                    # Run all models concurrently
-                    model_results = {}
-                    for model_name, task_coro in tasks:
-                        model_results[model_name] = await task_coro
-
-                    return model_results
-
-                # Execute async function
-                model_results = asyncio.run(run_all_models(example))
-
-                # Process results
                 for model_config in self.config.models:
-                    model_result = model_results[model_config.name]
+                    model_result = all_results[(example.id, model_config.name)]
 
                     # Ensure answer is string
                     if not isinstance(model_result["answer"], str):
