@@ -163,40 +163,68 @@ class BenchmarkRunner:
                     desc=f"{task.dataset_name}",
                 ):
                     key = future_to_key[future]
-                    all_results[key] = future.result()
+                    try:
+                        all_results[key] = future.result()
+                    except Exception as e:
+                        all_results[key] = {
+                            "answer": f"Error: {e}",
+                            "time": 0,
+                            "error": str(e),
+                            "llm_calls": 0,
+                        }
 
             # Assemble results by example
             results = []
+            print(f"\nAssembling {len(examples)} results...")
             for example in examples:
-                result_entry = {
-                    "id": example.id,
-                    "question": example.question,
-                    "gold_answer": example.gold_answer,
-                    "models": {},
-                }
+                try:
+                    result_entry = {
+                        "id": example.id,
+                        "question": example.question,
+                        "gold_answer": example.gold_answer,
+                        "models": {},
+                    }
 
-                for model_config in self.config.models:
-                    model_result = all_results[(example.id, model_config.name)]
+                    for model_config in self.config.models:
+                        key = (example.id, model_config.name)
+                        if key not in all_results:
+                            print(f"Warning: Missing result for {key}")
+                            continue
 
-                    # Ensure answer is string
-                    if not isinstance(model_result["answer"], str):
-                        model_result["answer"] = str(model_result["answer"])
+                        model_result = all_results[key]
 
-                    # Calculate metrics
-                    em = exact_match_score(model_result["answer"], example.gold_answer)
-                    f1 = f1_score(model_result["answer"], example.gold_answer)
+                        # Ensure answer is string
+                        if not isinstance(model_result["answer"], str):
+                            model_result["answer"] = str(model_result["answer"])
 
-                    result_entry["models"][model_config.name] = {**model_result, "em": em, "f1": f1}
+                        # Calculate metrics
+                        em = exact_match_score(model_result["answer"], example.gold_answer)
+                        f1 = f1_score(model_result["answer"], example.gold_answer)
 
-                results.append(result_entry)
+                        result_entry["models"][model_config.name] = {**model_result, "em": em, "f1": f1}
+
+                    results.append(result_entry)
+                except Exception as e:
+                    print(f"Error assembling result for example {example.id}: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             # Save results with run_id
             output_file = os.path.join(
                 self.config.output_dir, f"{task.dataset_name}_results_{self.run_id}.jsonl"
             )
-            with open(output_file, "w") as f:
-                for res in results:
-                    f.write(json.dumps(res) + "\n")
+            print(f"\nSaving {len(results)} results to {output_file}...")
+            try:
+                with open(output_file, "w") as f:
+                    for i, res in enumerate(results):
+                        f.write(json.dumps(res) + "\n")
+                        f.flush()  # Ensure write happens
+                print(f"✓ Successfully saved {len(results)} results")
+            except Exception as e:
+                print(f"✗ Error saving results: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
 
             # Print summary
             print(f"\n{'=' * 60}")
