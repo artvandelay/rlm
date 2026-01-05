@@ -216,7 +216,7 @@ class BenchmarkRunner:
             print(f"\nSaving {len(results)} results to {output_file}...")
             try:
                 with open(output_file, "w") as f:
-                    for i, res in enumerate(results):
+                    for res in results:
                         f.write(json.dumps(res) + "\n")
                         f.flush()  # Ensure write happens
                 print(f"✓ Successfully saved {len(results)} results")
