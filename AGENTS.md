@@ -315,3 +315,23 @@ When building a new isolated environment (e.g., for a new cloud provider):
 
 See `rlm/environments/modal_repl.py` as the canonical reference implementation.
 
+## Benchmarking
+
+A benchmarking suite is available in `benchmarks/` to compare RLM performance against standard LLM inference.
+
+### Quick Start
+```bash
+# Quick test (2 models, 5 examples)
+python run_benchmark_quick.py
+
+# View results
+python benchmarks/viewer.py --file benchmarks/results/hotpot_qa_results_*.jsonl
+```
+
+### Adding New Datasets
+Implement `BaseTask` interface in `benchmarks/tasks/`:
+- `load_examples()`: Load and format dataset
+- `get_dataset_info()`: Return metadata dict
+
+See `benchmarks/tasks/hotpotqa.py` for reference implementation. Full documentation in `benchmarks/README.md`.
+
