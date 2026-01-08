@@ -212,16 +212,20 @@ class QueryMetadata:
     context_lengths: list[int]
     context_total_length: int
     context_type: str
+    context_keys: list[str] | None  # File names or keys when context is a dict
 
     def __init__(self, prompt: str | list[str] | dict[Any, str] | list[dict[Any, str]]):
         if isinstance(prompt, str):
             self.context_lengths = [len(prompt)]
             self.context_type = "str"
+            self.context_keys = None
         elif isinstance(prompt, dict):
             self.context_lengths = [len(chunk) for chunk in prompt.values()]
+            self.context_keys = list(prompt.keys())  # Store the keys (file names)
             self.context_type = "dict"
         elif isinstance(prompt, list):
             self.context_type = "list"
+            self.context_keys = None
             if isinstance(prompt[0], dict):
                 if "content" in prompt[0]:
                     self.context_lengths = [len(chunk["content"]) for chunk in prompt]

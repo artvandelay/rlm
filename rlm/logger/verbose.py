@@ -6,6 +6,7 @@ Provides console output for debugging and understanding RLM execution.
 Uses a "Tokyo Night" inspired color theme.
 """
 
+import sys
 from typing import Any
 
 from rich.console import Console, Group
@@ -71,7 +72,12 @@ class VerbosePrinter:
             enabled: Whether verbose printing is enabled. If False, all methods are no-ops.
         """
         self.enabled = enabled
-        self.console = Console() if enabled else None
+        # Force unbuffered output for real-time verbose display
+        self.console = (
+            Console(file=sys.stdout, force_terminal=True, force_interactive=True)
+            if enabled
+            else None
+        )
         self._iteration_count = 0
 
     def print_header(

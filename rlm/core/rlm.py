@@ -197,19 +197,33 @@ class RLM:
                 self.verbose.print_iteration(iteration, i + 1)
 
                 if final_answer:
-                    time_end = time.perf_counter()
-                    usage = lm_handler.get_usage_summary()
-                    self.verbose.print_final_answer(final_answer)
-                    self.verbose.print_summary(i + 1, time_end - time_start, usage.to_dict())
-                    return RLMChatCompletion(
-                        root_model=self.backend_kwargs.get("model_name", "unknown")
-                        if self.backend_kwargs
-                        else "unknown",
-                        prompt=prompt,
-                        response=final_answer,
-                        usage_summary=usage,
-                        execution_time=time_end - time_start,
-                    )
+                    # Extract actual answer content from tuple
+                    answer_type, answer_content = final_answer
+                    final_answer_str = answer_content
+                    
+                    # If FINAL_VAR, extract variable from environment
+                    if answer_type == "FINAL_VAR":
+                        var_name = answer_content.strip().strip('"').strip("'")
+                        if var_name in environment.locals:
+                            final_answer_str = str(environment.locals[var_name])
+                        else:
+                            # Variable not found - continue to next iteration
+                            final_answer = None
+                    
+                    if final_answer:
+                        time_end = time.perf_counter()
+                        usage = lm_handler.get_usage_summary()
+                        self.verbose.print_final_answer(final_answer_str)
+                        self.verbose.print_summary(i + 1, time_end - time_start, usage.to_dict())
+                        return RLMChatCompletion(
+                            root_model=self.backend_kwargs.get("model_name", "unknown")
+                            if self.backend_kwargs
+                            else "unknown",
+                            prompt=prompt,
+                            response=final_answer_str,
+                            usage_summary=usage,
+                            execution_time=time_end - time_start,
+                        )
 
                 # Format the iteration for the next prompt.
                 new_messages = format_iteration(iteration)

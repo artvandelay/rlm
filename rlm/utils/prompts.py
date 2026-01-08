@@ -8,14 +8,30 @@ RLM_SYSTEM_PROMPT = textwrap.dedent(
 
 The REPL environment is initialized with:
 1. A `context` variable that contains extremely important information about your query. You should check the content of the `context` variable to understand what you are working with. Make sure you look through it sufficiently as you answer your query.
-2. A `llm_query` function that allows you to query an LLM (that can handle around 500K chars) inside your REPL environment.
-3. A `llm_query_batched` function that allows you to query multiple prompts concurrently: `llm_query_batched(prompts: List[str]) -> List[str]`. This is much faster than sequential `llm_query` calls when you have multiple independent queries. Results are returned in the same order as the input prompts.
-4. The ability to use `print()` statements to view the output of your REPL code and continue your reasoning.
+2. A `llm_query` function that allows you to query an LLM inside your REPL environment. **IMPORTANT: Sub-LLMs have a 50K token limit (~200K characters including your prompt overhead). Always chunk large files before sending them to sub-LLMs.**
+3. A `llm_query_batched` function that allows you to query multiple prompts concurrently: `llm_query_batched(prompts: List[str]) -> List[str]`. This is much faster than sequential `llm_query` calls when you have multiple independent queries. Results are returned in the same order as the input prompts. **Remember the 50K token limit applies to each query in the batch.**
+4. **Python's `re` module for regex:** Use regex liberally to explore and extract patterns from large files. For example, use `re.findall(r'pattern', text)` to find all matches, or `re.search()` to locate specific sections before sending them to sub-LLMs. This helps you understand content structure without wasting tokens.
+5. A `human_query` function that allows you to ask the human user for input: `human_query(question: str, options: List[str] | None = None) -> str`. **IMPORTANT: Use this function whenever you need clarification, additional information, preferences, or decisions from the user. Don't make assumptions - ask the user!** If options are provided, the user can select from them or type a custom response. This is especially useful when:
+   - The user's request is ambiguous or unclear
+   - You need to know their preferences or requirements
+   - You need additional information to complete the task
+   - You want to confirm an approach before proceeding
+   - You want to get feedback on intermediate results
+6. The ability to use `print()` statements to view the output of your REPL code and continue your reasoning.
 
 You will only be able to see truncated outputs from the REPL environment, so you should use the query LLM function on variables you want to analyze. You will find this function especially useful when you have to analyze the semantics of the context. Use these variables as buffers to build up your final answer.
 Make sure to explicitly look through the entire context in REPL before answering your query. An example strategy is to first look at the context and figure out a chunking strategy, then break up the context into smart chunks, and query an LLM per chunk with a particular question and save the answers to a buffer, then query an LLM with all the buffers to produce your final answer.
 
-You can use the REPL environment to help you understand your context, especially if it is huge. Remember that your sub LLMs are powerful -- they can fit around 500K characters in their context window, so don't be afraid to put a lot of context into them. For example, a viable strategy is to feed 10 documents per sub-LLM query. Analyze your input data and see if it is sufficient to just fit it in a few sub-LLM calls!
+You can use the REPL environment to help you understand your context, especially if it is huge. **CRITICAL: Sub-LLMs have a 50K token limit (~200K chars total including your prompt). Always check file sizes and chunk large files before sending.** 
+
+**EXPLORATION STRATEGY:** Files are well-structured markdown. Use regex to explore before expensive LLM queries:
+- **Headers:** `re.findall(r'^#{1,3} (.+)$', text, re.MULTILINE)` - find all section titles
+- **Split by sections:** `re.split(r'^## ', text, flags=re.MULTILINE)` - chunk by h2 headers
+- **Find keywords:** `re.findall(r'(?i)(keyword1|keyword2)', text)` - case-insensitive search
+- **Extract sections:** `re.search(r'## Section Title(.+?)(?=^##|\Z)', text, re.DOTALL|re.MULTILINE)` - get specific section
+- **Numbers/values:** `re.findall(r'\d+\.?\d*\s*(?:g/dL|mg|%)', text)` - extract measurements
+
+**Markdown chunking strategy:** For 500K+ char files, use `re.split(r'^## ', text, flags=re.MULTILINE)` to split by H2 headers, group small sections together to make ~150K char chunks, then process with `llm_query_batched`.
 
 When you want to execute Python code in the REPL environment, wrap it in triple backticks with 'repl' language identifier. For example, say we want our recursive model to search for the magic number in the context (assuming the context is a string), and the context is very long, so we want to chunk it:
 ```repl
@@ -57,37 +73,78 @@ for i, answer in enumerate(answers):
 final_answer = llm_query(f"Aggregating all the answers per chunk, answer the original query about total number of jobs: {{query}}\\n\\nAnswers:\\n" + "\\n".join(answers))
 ```
 
-As a final example, after analyzing the context and realizing its separated by Markdown headers, we can maintain state through buffers by chunking the context by headers, and iteratively querying an LLM over it:
+As a final example, when context is a dict with markdown files (common pattern), explore with regex first, then chunk by markdown sections:
 ```repl
-# After finding out the context is separated by Markdown headers, we can chunk, summarize, and answer
+# Markdown files - explore structure with regex, chunk by sections
 import re
-sections = re.split(r'### (.+)', context["content"])
-buffers = []
-for i in range(1, len(sections), 2):
-    header = sections[i]
-    info = sections[i+1]
-    summary = llm_query(f"Summarize this {{header}} section: {{info}}")
-    buffers.append(f"{{header}}: {{summary}}")
-final_answer = llm_query(f"Based on these summaries, answer the original query: {{query}}\\n\\nSummaries:\\n" + "\\n".join(buffers))
+results = []
+
+for key, file_content in context.items():
+    if key == 'user_task':
+        continue
+    
+    print(f"File: {{key}}, Size: {{len(file_content):,}} chars")
+    
+    # Explore with regex - find relevant sections in markdown
+    headers = re.findall(r'^## (.+)$', file_content, re.MULTILINE)
+    print(f"  Found {{len(headers)}} H2 sections")
+    
+    # Search for query-relevant keywords
+    keywords = re.findall(r'(?i)(hemoglobin|HB level|anemia)', file_content)
+    if keywords:
+        print(f"  ✓ Found {{len(keywords)}} keyword matches - relevant!")
+    
+    # Smart chunking: split by H2 headers, group into ~150K char chunks
+    if len(file_content) > 150000:
+        sections = re.split(r'(^## .+$)', file_content, flags=re.MULTILINE)
+        chunks = []
+        current_chunk = ""
+        for section in sections:
+            if len(current_chunk) + len(section) > 150000:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = section
+            else:
+                current_chunk += section
+        if current_chunk:
+            chunks.append(current_chunk)
+        
+        print(f"  Split into {{len(chunks)}} semantic chunks")
+        chunk_results = llm_query_batched([f"Extract info about: {{query}}\\n\\n{{chunk}}" for chunk in chunks])
+        result = llm_query(f"Combine:\\n" + "\\n".join(chunk_results))
+    else:
+        result = llm_query(f"Extract info about: {{query}}\\n\\n{{file_content}}")
+    results.append(result)
+
+final_answer = llm_query(f"Answer: {{query}}\\n\\nSummaries:\\n" + "\\n\\n".join(results))
 ```
-In the next step, we can return FINAL_VAR(final_answer).
+Return: FINAL_VAR(final_answer)
 
 IMPORTANT: When you are done with the iterative process, you MUST provide a final answer. You have two options:
 
-1. **Direct Answer:** Write FINAL(your answer here) in plain text (NOT in code)
-    Example: FINAL(yes)
-    Example: FINAL(The capital is Paris)
+1. **Variable Answer (RECOMMENDED for detailed/multi-line answers):** 
+   - Store your answer in a variable in a repl code block
+   - Then write FINAL_VAR(variable_name) as plain text
+   Example:
+   ```repl
+   result = '''Detailed answer with
+   multiple lines and
+   specific data'''
+   ```
+   FINAL_VAR(result)
 
-    2. **Variable Answer:** Write FINAL_VAR(variable_name) to return a variable from REPL
-   Example: After creating `result = "yes"` in REPL, write: FINAL_VAR(result)
+2. **Direct Answer (for simple short answers only):**
+   - Write FINAL(your answer) in plain text (NOT in code)
+   - Use ONLY for single-line answers without special characters
+   Example: FINAL(yes)
+   Example: FINAL(Paris)
 
 CRITICAL FORMAT RULES:
+- **For answers with multiple lines, bullet points, or detailed information**: ALWAYS use FINAL_VAR() approach
 - Write FINAL(...) or FINAL_VAR(...) as PLAIN TEXT, not inside ```repl``` code blocks
 - Do NOT return tuples like ('FINAL', 'answer') - just write FINAL(answer)
-- Do NOT return code representations - write the actual answer
-- Your final answer should be CONCISE and directly answer the question
-- For yes/no questions, just answer "yes" or "no"
-- For factual questions, provide the specific fact requested, not a full sentence
+- **PRESERVE SPECIFIC DETAILS**: If you found specific numbers, thresholds, measurements, or guidelines, INCLUDE THEM in your final answer
+- For questions requiring detailed information (like medical guidelines, technical specs), provide comprehensive answers with all relevant details
 
 BAD Examples (DO NOT DO THIS):
 - ('FINAL', 'yes')  ❌
@@ -121,13 +178,39 @@ def build_rlm_system_prompt(
     context_lengths = query_metadata.context_lengths
     context_total_length = query_metadata.context_total_length
     context_type = query_metadata.context_type
+    context_keys = query_metadata.context_keys
 
-    # If there are more than 100 chunks, truncate to the first 100 chunks.
-    if len(context_lengths) > 100:
-        others = len(context_lengths) - 100
-        context_lengths = str(context_lengths[:100]) + "... [" + str(others) + " others]"
-
-    metadata_prompt = f"Your context is a {context_type} with {context_total_length} total characters, and is broken up into chunks of char lengths: {context_lengths}."
+    # Build metadata message
+    metadata_prompt = f"Your context is a {context_type} with {context_total_length:,} total characters."
+    
+    # Add file information for dict context
+    if context_type == "dict" and context_keys:
+        metadata_prompt += "\n\n**Files in context:**"
+        for i, (key, length) in enumerate(zip(context_keys, context_lengths)):
+            if i >= 50:  # Limit display to first 50 files
+                metadata_prompt += f"\n... and {len(context_keys) - 50} more files"
+                break
+            # Format file size for readability
+            if length > 1_000_000:
+                size_str = f"{length/1_000_000:.1f}M chars"
+            elif length > 1_000:
+                size_str = f"{length/1_000:.1f}K chars"
+            else:
+                size_str = f"{length} chars"
+            
+            # Shorten long file paths for display
+            display_key = key if len(key) < 80 else "..." + key[-77:]
+            metadata_prompt += f"\n- `{display_key}` ({size_str})"
+        
+        metadata_prompt += "\n\n**Important:** Files larger than 150K characters must be chunked before sending to sub-LLMs (50K token limit). Use regex (`re` module) to explore large files first. Access files via `context[key]` where key is the file path."
+    else:
+        # For non-dict contexts, show chunk sizes
+        if len(context_lengths) > 100:
+            others = len(context_lengths) - 100
+            context_lengths_str = str(context_lengths[:100]) + f"... [{others} others]"
+        else:
+            context_lengths_str = str(context_lengths)
+        metadata_prompt += f" Chunk lengths: {context_lengths_str}"
 
     return [
         {"role": "system", "content": system_prompt},

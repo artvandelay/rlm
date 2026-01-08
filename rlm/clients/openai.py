@@ -37,6 +37,7 @@ class OpenAIClient(BaseLM):
                 api_key = DEFAULT_OPENROUTER_API_KEY
 
         # For vLLM, set base_url to local vLLM server address.
+        self.base_url = base_url  # Store for use in async methods
         self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
         self.async_client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
@@ -63,9 +64,15 @@ class OpenAIClient(BaseLM):
         if self.client.base_url == DEFAULT_PRIME_INTELLECT_BASE_URL:
             extra_body["usage"] = {"include": True}
 
-        response = self.client.chat.completions.create(
-            model=model, messages=messages, extra_body=extra_body
-        )
+        # Pass through any additional kwargs (like max_tokens)
+        completion_kwargs = {
+            "model": model,
+            "messages": messages,
+            "extra_body": extra_body,
+            **self.kwargs  # Include max_tokens and other parameters
+        }
+        
+        response = self.client.chat.completions.create(**completion_kwargs)
         self._track_cost(response, model)
         return response.choices[0].message.content
 
@@ -87,9 +94,15 @@ class OpenAIClient(BaseLM):
         if self.base_url == DEFAULT_PRIME_INTELLECT_BASE_URL:
             extra_body["usage"] = {"include": True}
 
-        response = await self.async_client.chat.completions.create(
-            model=model, messages=messages, extra_body=extra_body
-        )
+        # Pass through any additional kwargs (like max_tokens)
+        completion_kwargs = {
+            "model": model,
+            "messages": messages,
+            "extra_body": extra_body,
+            **self.kwargs  # Include max_tokens and other parameters
+        }
+        
+        response = await self.async_client.chat.completions.create(**completion_kwargs)
         self._track_cost(response, model)
         return response.choices[0].message.content
 
